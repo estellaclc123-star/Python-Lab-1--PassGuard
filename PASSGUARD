@@ -1,0 +1,876 @@
+"""
+PassGuard – A Password Security Toolkit
+Lab 1 – Python (Level 200)
+
+Author: Fosu Estella
+Index Number: 2526405123
+"""
+
+import string
+import secrets
+import hashlib
+import datetime
+import re
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+
+# ==========================================
+# 1. CONSTANTS
+# ==========================================
+
+LOG_FILE = "passguard_log.txt"
+
+COMMON_PASSWORDS = [
+    "password",
+    "123456",
+    "123456789",
+    "qwerty",
+    "abc123",
+    "111111",
+    "admin",
+    "letmein",
+    "welcome"
+]
+
+COLOURS = {
+    "VERY WEAK": "red",
+    "WEAK": "orange",
+    "MEDIUM": "blue",
+    "STRONG": "green"
+}
+
+
+# ==========================================
+# 2. PASSWORD LOGIC FUNCTIONS(No GUI codes here)
+# ==========================================
+
+def check_strength(password, person_name=""):
+    """
+    Checks password strength and returns:
+    score, label and improvement tips.
+    """
+
+    score = 0
+    tips = []
+
+    # Check for empty password
+    if not password:
+        return 0, "VERY WEAK", ["Enter a password."]
+
+    # Check common passwords
+    if password.lower() in COMMON_PASSWORDS:
+        return 0, "VERY WEAK", [
+            "This is a commonly used password. Choose another one."
+        ]
+
+    # Length check
+    if len(password) >= 12:
+        score += 2
+    elif len(password) >= 8:
+        score += 1
+        tips.append("Use at least 12 characters.")
+    else:
+        tips.append("Use at least 8 characters.")
+
+    # Uppercase check
+    if any(char.isupper() for char in password):
+        score += 1
+    else:
+        tips.append("Add an uppercase letter.")
+
+    # Lowercase check
+    if any(char.islower() for char in password):
+        score += 1
+    else:
+        tips.append("Add a lowercase letter.")
+
+    # Digit check
+    if any(char.isdigit() for char in password):
+        score += 1
+    else:
+        tips.append("Add a number.")
+
+    # Special character check
+    if any(char in string.punctuation for char in password):
+        score += 1
+    else:
+        tips.append("Add a special character.")
+
+    # EXTENSION 3: No three identical characters in a row
+    if re.search(r"(.)\1\1", password):
+        score = max(0, score - 1)
+        tips.append(
+            "Avoid three identical characters appearing consecutively."
+        )
+
+    # EXTENSION 4: Personal information check
+    if person_name.strip():
+        name_parts = person_name.lower().split()
+
+        for part in name_parts:
+            if len(part) >= 2 and part in password.lower():
+                tips.append(
+                    "Warning: Your password contains part of your name. "
+                    "Avoid using personal information."
+                )
+                break
+
+    # Determine password label
+    if score <= 2:
+        label = "WEAK"
+    elif score <= 4:
+        label = "MEDIUM"
+    else:
+        label = "STRONG"
+
+    return score, label, tips
+
+
+def generate_password(length=16):
+    """
+    Generates a strong random password using secrets.
+    """
+
+    characters = (
+        string.ascii_letters
+        + string.digits
+        + string.punctuation
+    )
+
+    while True:
+        password = "".join(
+            secrets.choice(characters)
+            for _ in range(length)
+        )
+
+        score, label, tips = check_strength(password)
+
+        if label == "STRONG":
+            return password
+
+
+def hash_password(password):
+    """
+    Creates a SHA-256 hash of a password.
+    """
+
+    return hashlib.sha256(
+        password.encode()
+    ).hexdigest()
+
+
+def save_to_log(password, score, label):
+    """
+    this saves the information of the password but not the exact password
+    """
+
+    password_hash = hash_password(password)[:10]
+
+    timestamp = datetime.datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    record = (
+        f"{timestamp} | "
+        f"Hash: {password_hash} | "
+        f"Score: {score}/6 | "
+        f"{label}\n"
+    )
+
+    with open(LOG_FILE, "a") as file:
+        file.write(record)
+
+
+def load_log():
+    """
+    Loads previously saved password history.
+    """
+
+    try:
+        with open(LOG_FILE, "r") as file:
+            return file.readlines()
+
+    except FileNotFoundError:
+        return []
+
+
+# ==========================================
+# 3. GUI EVENT HANDLERS
+# ==========================================
+
+def live_check(event=None):
+    """
+    Checks password strength while the user types.
+    """
+
+    password = password_entry.get()
+    person_name = name_entry.get()
+
+    score, label, tips = check_strength(
+        password,
+        person_name
+    )
+
+    strength_var.set(score)
+    result_label.config(
+        text=label,
+        fg=COLOURS.get(label, "black")
+    )
+
+    score_label.config(
+        text=f"Score: {score}/6"
+    )
+
+    if tips:
+        tips_label.config(
+            text="Tips:\n" + "\n".join(
+                "• " + tip for tip in tips
+            )
+        )
+    else:
+        tips_label.config(
+            text="Excellent! Your password meets all the checks."
+        )
+
+
+def on_check():
+    """
+    Saves the password check to history.
+    """
+
+    password = password_entry.get()
+
+    if not password:
+        messagebox.showwarning(
+            "Empty Password",
+            "Please enter a password first."
+        )
+        return
+
+    person_name = name_entry.get()
+
+    score, label, tips = check_strength(
+        password,
+        person_name
+    )
+
+    save_to_log(password, score, label)
+
+    messagebox.showinfo(
+        "Password Check Saved",
+        "Your password check has been saved."
+    )
+
+    refresh_history()
+
+
+def toggle_show():
+    """
+    Shows or hides the password.
+    """
+
+    if show_var.get():
+        password_entry.config(show="")
+    else:
+        password_entry.config(show="*")
+
+
+def on_generate():
+    """
+    Generates a strong password.
+    """
+
+    try:
+        length = int(length_var.get())
+
+        if length < 8 or length > 32:
+            messagebox.showwarning(
+                "Invalid Length",
+                "Password length must be between 8 and 32."
+            )
+            return
+
+        generated = generate_password(length)
+
+        generated_var.set(generated)
+
+    except ValueError:
+        messagebox.showerror(
+            "Invalid Input",
+            "Please enter a valid password length."
+        )
+
+
+def on_copy():
+    """
+    Copies the generated password to the clipboard.
+    """
+
+    generated = generated_var.get()
+
+    if not generated:
+        messagebox.showwarning(
+            "No Password",
+            "Generate a password first."
+        )
+        return
+
+    root.clipboard_clear()
+    root.clipboard_append(generated)
+    root.update()
+
+    messagebox.showinfo(
+        "Copied",
+        "Password copied to clipboard."
+    )
+
+
+# EXTENSION 2: USE GENERATED PASSWORD
+
+def use_generated_password():
+    """
+    Places the generated password into the checker
+    and automatically checks its strength.
+    """
+
+    generated = generated_var.get()
+
+    if not generated:
+        messagebox.showwarning(
+            "No Password",
+            "Generate a password first."
+        )
+        return
+
+    password_entry.delete(0, tk.END)
+    password_entry.insert(0, generated)
+
+    live_check()
+
+
+def on_hash():
+    """
+    Generates the SHA-256 hash of the entered password.
+    """
+
+    password = password_entry.get()
+
+    if not password:
+        messagebox.showwarning(
+            "Empty Password",
+            "Enter a password before hashing."
+        )
+        return
+
+    hashed = hash_password(password)
+
+    hash_var.set(hashed)
+
+
+# EXTENSION 1: CLEAR HISTORY
+
+def clear_history():
+    """
+    Clears the history file and history list
+    after asking for confirmation.
+    """
+
+    answer = messagebox.askyesno(
+        "Clear History",
+        "Are you sure you want to clear all password history?"
+    )
+
+    if answer:
+        with open(LOG_FILE, "w") as file:
+            file.write("")
+
+        history_listbox.delete(0, tk.END)
+
+        messagebox.showinfo(
+            "History Cleared",
+            "Password history has been cleared."
+        )
+
+
+def refresh_history():
+    """
+    Reloads the history list.
+    """
+
+    history_listbox.delete(0, tk.END)
+
+    records = load_log()
+
+    for record in records:
+        history_listbox.insert(
+            tk.END,
+            record.strip()
+        )
+
+
+# ==========================================
+# 4. DARK MODE
+# ==========================================
+
+dark_mode = False
+
+
+def change_theme():
+    """
+    EXTENSION 5:
+    Switches the application between light and dark mode.
+    """
+
+    global dark_mode
+
+    dark_mode = dark_var.get()
+
+    if dark_mode:
+        background = "#222222"
+        foreground = "white"
+        entry_background = "#444444"
+        button_background = "#333333"
+    else:
+        background = "#f0f0f0"
+        foreground = "black"
+        entry_background = "white"
+        button_background = "#e0e0e0"
+
+    root.config(bg=background)
+
+    # Update all widgets
+    def update_widgets(widget):
+
+        widget_type = widget.winfo_class()
+
+        try:
+            if widget_type in ("Frame", "Labelframe"):
+                widget.config(bg=background)
+
+            elif widget_type == "Label":
+                widget.config(
+                    bg=background,
+                    fg=foreground
+                )
+
+            elif widget_type == "Entry":
+                widget.config(
+                    bg=entry_background,
+                    fg=foreground,
+                    insertbackground=foreground
+                )
+
+            elif widget_type == "Button":
+                widget.config(
+                    bg=button_background,
+                    fg=foreground,
+                    activebackground=background,
+                    activeforeground=foreground
+                )
+
+            elif widget_type in ("Checkbutton", "Radiobutton"):
+                widget.config(
+                    bg=background,
+                    fg=foreground,
+                    activebackground=background,
+                    activeforeground=foreground,
+                    selectcolor=entry_background
+                )
+
+            elif widget_type == "Listbox":
+                widget.config(
+                    bg=entry_background,
+                    fg=foreground
+                )
+
+        except tk.TclError:
+            pass
+
+        for child in widget.winfo_children():
+            update_widgets(child)
+
+    update_widgets(root)
+
+    # Update progress bar style
+    if dark_mode:
+        style.configure(
+            "PassGuard.Horizontal.TProgressbar",
+            troughcolor="#444444",
+            background="green"
+        )
+    else:
+        style.configure(
+            "PassGuard.Horizontal.TProgressbar",
+            troughcolor="white",
+            background="green"
+        )
+
+
+# ==========================================
+# 5. BUILD THE GUI WINDOW
+# ==========================================
+
+root = tk.Tk()
+
+root.title("PassGuard – Password Security Toolkit")
+root.geometry("700x780")
+root.resizable(False, False)
+
+root.config(bg="#f0f0f0")
+
+
+# ==========================================
+# MAIN TITLE
+# ==========================================
+
+title_label = tk.Label(
+    root,
+    text="PassGuard",
+    font=("Arial", 22, "bold"),
+    bg="#f0f0f0"
+)
+
+title_label.pack(pady=10)
+
+
+subtitle_label = tk.Label(
+    root,
+    text="A Password Security Toolkit",
+    font=("Arial", 11),
+    bg="#f0f0f0"
+)
+
+subtitle_label.pack(pady=2)
+
+
+# ==========================================
+# SECTION 1: PASSWORD STRENGTH CHECKER
+# ==========================================
+
+check_frame = tk.LabelFrame(
+    root,
+    text="1. Check Password Strength",
+    font=("Arial", 11, "bold"),
+    padx=10,
+    pady=10,
+    bg="#f0f0f0"
+)
+
+check_frame.pack(
+    fill="x",
+    padx=20,
+    pady=10
+)
+
+
+# Personal name entry
+
+name_label = tk.Label(
+    check_frame,
+    text="Your name:",
+    bg="#f0f0f0"
+)
+
+name_label.pack(anchor="w")
+
+name_entry = tk.Entry(
+    check_frame,
+    width=40
+)
+
+name_entry.pack(anchor="w", pady=5)
+
+
+# Password entry
+
+password_label = tk.Label(
+    check_frame,
+    text="Enter password:",
+    bg="#f0f0f0"
+)
+
+password_label.pack(anchor="w")
+
+
+password_entry = tk.Entry(
+    check_frame,
+    width=40,
+    show="*"
+)
+
+password_entry.pack(anchor="w", pady=5)
+
+password_entry.bind(
+    "<KeyRelease>",
+    live_check
+)
+
+
+# Show password checkbox
+
+show_var = tk.BooleanVar()
+
+show_checkbox = tk.Checkbutton(
+    check_frame,
+    text="Show Password",
+    variable=show_var,
+    command=toggle_show,
+    bg="#f0f0f0"
+)
+
+show_checkbox.pack(anchor="w")
+
+
+# Strength result
+
+result_label = tk.Label(
+    check_frame,
+    text="Enter a password",
+    font=("Arial", 12, "bold"),
+    bg="#f0f0f0"
+)
+
+result_label.pack(pady=5)
+
+
+# Strength progress bar
+
+strength_var = tk.IntVar()
+
+style = ttk.Style()
+
+style.configure(
+    "PassGuard.Horizontal.TProgressbar",
+    troughcolor="white",
+    background="green"
+)
+
+strength_bar = ttk.Progressbar(
+    check_frame,
+    maximum=6,
+    variable=strength_var,
+    length=400,
+    style="PassGuard.Horizontal.TProgressbar"
+)
+
+strength_bar.pack(pady=5)
+
+
+score_label = tk.Label(
+    check_frame,
+    text="Score: 0/6",
+    bg="#f0f0f0"
+)
+
+score_label.pack()
+
+
+tips_label = tk.Label(
+    check_frame,
+    text="",
+    justify="left",
+    wraplength=550,
+    bg="#f0f0f0"
+)
+
+tips_label.pack(pady=5)
+
+
+# Checker buttons
+
+button_row = tk.Frame(
+    check_frame,
+    bg="#f0f0f0"
+)
+
+button_row.pack(pady=5)
+
+
+check_button = tk.Button(
+    button_row,
+    text="Save Check",
+    command=on_check
+)
+
+check_button.pack(side="left", padx=5)
+
+
+hash_button = tk.Button(
+    button_row,
+    text="Hash It",
+   command=on_hash
+)
+
+hash_button.pack(side="left", padx=5)
+
+
+# Hash display
+
+hash_var = tk.StringVar()
+
+hash_entry = tk.Entry(
+    check_frame,
+    textvariable=hash_var,
+    width=65,
+    state="readonly"
+)
+
+hash_entry.pack(pady=5)
+
+
+# ==========================================
+# SECTION 2: PASSWORD GENERATOR
+# ==========================================
+
+generate_frame = tk.LabelFrame(
+    root,
+    text="2. Generate Strong Password",
+    font=("Arial", 11, "bold"),
+    padx=10,
+    pady=10,
+    bg="#f0f0f0"
+)
+
+generate_frame.pack(
+    fill="x",
+    padx=20,
+    pady=10
+)
+
+
+length_label = tk.Label(
+    generate_frame,
+    text="Password length (8–32):",
+    bg="#f0f0f0"
+)
+
+length_label.pack(anchor="w")
+
+
+length_var = tk.StringVar(value="16")
+
+length_entry = tk.Entry(
+    generate_frame,
+    textvariable=length_var,
+    width=10
+)
+
+length_entry.pack(anchor="w", pady=5)
+
+
+generated_var = tk.StringVar()
+
+generated_entry = tk.Entry(
+    generate_frame,
+    textvariable=generated_var,
+    width=45,
+    state="readonly"
+)
+
+generated_entry.pack(pady=5)
+
+
+generate_button = tk.Button(
+    generate_frame,
+    text="Generate Password",
+    command=on_generate
+)
+
+generate_button.pack(side="left", padx=5)
+
+
+copy_button = tk.Button(
+    generate_frame,
+    text="Copy",
+    command=on_copy
+)
+
+copy_button.pack(side="left", padx=5)
+
+
+# EXTENSION 2 BUTTON
+
+use_button = tk.Button(
+    generate_frame,
+    text="Use Generated Password",
+    command=use_generated_password
+)
+
+use_button.pack(side="left", padx=5)
+
+
+# ==========================================
+# SECTION 3: PASSWORD HISTORY
+# ==========================================
+
+history_frame = tk.LabelFrame(
+    root,
+    text="3. Password History",
+    font=("Arial", 11, "bold"),
+    padx=10,
+    pady=10,
+    bg="#f0f0f0"
+)
+
+history_frame.pack(
+    fill="both",
+    expand=True,
+    padx=20,
+    pady=10
+)
+
+
+history_listbox = tk.Listbox(
+    history_frame,
+    width=85,
+    height=7
+)
+
+history_listbox.pack(
+    fill="both",
+    expand=True,
+    pady=5
+)
+
+
+# Clear history button
+
+clear_button = tk.Button(
+    history_frame,
+    text="Clear History",
+    command=clear_history
+)
+
+clear_button.pack(pady=5)
+
+
+# ==========================================
+# DARK MODE CHECKBOX
+# ==========================================
+
+dark_var = tk.BooleanVar(value=False)
+
+dark_checkbox = tk.Checkbutton(
+    root,
+    text="Enable Dark Mode",
+    variable=dark_var,
+    command=change_theme,
+    bg="#f0f0f0"
+)
+
+dark_checkbox.pack(pady=5)
+
+
+# ==========================================
+# LOAD HISTORY WHEN APP STARTS
+# ==========================================
+
+refresh_history()
+
+
+# ==========================================
+# START APPLICATION
+# ==========================================
+
+root.mainloop()
